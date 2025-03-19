@@ -129,6 +129,20 @@ class TestDataFrameFormatting:
         with option_context("display.max_rows", 2, "display.show_dimensions", False):
             assert repr(df) == "       a\n0   <NA>\n..   ...\n9   <NA>"
 
+    def test_repr_truncation_dataframe_attrs(self):
+        # GH#60455
+        df = DataFrame([[0] * 10])
+        df.attrs["b"] = DataFrame([])
+        with option_context("display.max_columns", 2, "display.show_dimensions", False):
+            assert repr(df) == "   0  ...  9\n0  0  ...  0"
+
+    def test_repr_truncation_series_with_dataframe_attrs(self):
+        # GH#60568
+        ser = Series([0] * 10)
+        ser.attrs["b"] = DataFrame([])
+        with option_context("display.max_rows", 2, "display.show_dimensions", False):
+            assert repr(ser) == "0    0\n    ..\n9    0\ndtype: int64"
+
     def test_max_colwidth_negative_int_raises(self):
         # Deprecation enforced from:
         # https://github.com/pandas-dev/pandas/issues/31532
@@ -367,6 +381,40 @@ class TestDataFrameFormatting:
             # max_rows of None -> never truncate
             assert ".." not in repr(df)
             assert ".." not in df._repr_html_()
+
+    @pytest.mark.parametrize(
+        "data, format_option, expected_values",
+        [
+            (12345.6789, "{:12.3f}", "12345.679"),
+            (None, "{:.3f}", "None"),
+            ("", "{:.2f}", ""),
+            (112345.6789, "{:6.3f}", "112345.679"),
+            ("foo      foo", None, "foo&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;foo"),
+            (" foo", None, "foo"),
+            (
+                "foo foo       foo",
+                None,
+                "foo foo&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; foo",
+            ),  # odd no.of spaces
+            (
+                "foo foo    foo",
+                None,
+                "foo foo&nbsp;&nbsp;&nbsp;&nbsp;foo",
+            ),  # even no.of spaces
+        ],
+    )
+    def test_repr_float_formatting_html_output(
+        self, data, format_option, expected_values
+    ):
+        if format_option is not None:
+            with option_context("display.float_format", format_option.format):
+                df = DataFrame({"A": [data]})
+                html_output = df._repr_html_()
+                assert expected_values in html_output
+        else:
+            df = DataFrame({"A": [data]})
+            html_output = df._repr_html_()
+            assert expected_values in html_output
 
     def test_str_max_colwidth(self):
         # GH 7856

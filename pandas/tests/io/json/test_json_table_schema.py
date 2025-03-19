@@ -70,7 +70,7 @@ class TestBuildSchema:
             "primaryKey": ["idx"],
         }
         if using_infer_string:
-            expected["fields"][2] = {"name": "B", "type": "any", "extDtype": "string"}
+            expected["fields"][2] = {"name": "B", "type": "any", "extDtype": "str"}
         assert result == expected
         result = build_table_schema(df_schema)
         assert "pandas_version" in result
@@ -121,9 +121,9 @@ class TestBuildSchema:
             expected["fields"][0] = {
                 "name": "level_0",
                 "type": "any",
-                "extDtype": "string",
+                "extDtype": "str",
             }
-            expected["fields"][3] = {"name": "B", "type": "any", "extDtype": "string"}
+            expected["fields"][3] = {"name": "B", "type": "any", "extDtype": "str"}
         assert result == expected
 
         df.index.names = ["idx0", None]
@@ -303,7 +303,7 @@ class TestTableOrient:
         ]
 
         if using_infer_string:
-            fields[2] = {"name": "B", "type": "any", "extDtype": "string"}
+            fields[2] = {"name": "B", "type": "any", "extDtype": "str"}
 
         schema = {"fields": fields, "primaryKey": ["idx"]}
         data = [

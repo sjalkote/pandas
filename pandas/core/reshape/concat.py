@@ -17,6 +17,7 @@ import warnings
 import numpy as np
 
 from pandas._libs import lib
+from pandas.util._decorators import set_module
 from pandas.util._exceptions import find_stack_level
 
 from pandas.core.dtypes.common import (
@@ -149,6 +150,7 @@ def concat(
 ) -> DataFrame | Series: ...
 
 
+@set_module("pandas")
 def concat(
     objs: Iterable[Series | DataFrame] | Mapping[HashableT, Series | DataFrame],
     *,
@@ -201,7 +203,7 @@ def concat(
         be very expensive relative to the actual data concatenation.
     sort : bool, default False
         Sort non-concatenation axis. One exception to this is when the
-        non-concatentation axis is a DatetimeIndex and join='outer' and the axis is
+        non-concatenation axis is a DatetimeIndex and join='outer' and the axis is
         not already aligned. In that case, the non-concatenation axis is always
         sorted lexicographically.
     copy : bool, default False
@@ -379,6 +381,11 @@ def concat(
     0   1   2
     1   3   4
     """
+    if ignore_index and keys is not None:
+        raise ValueError(
+            f"Cannot set {ignore_index=} and specify keys. Either should be used."
+        )
+
     if copy is not lib.no_default:
         warnings.warn(
             "The copy keyword is deprecated and will be removed in a future "
@@ -470,18 +477,23 @@ def _sanitize_mixed_ndim(
 
         else:
             name = getattr(obj, "name", None)
+            rename_columns = False
             if ignore_index or name is None:
                 if axis == 1:
                     # doing a row-wise concatenation so need everything
                     # to line up
-                    name = 0
+                    if name is None:
+                        name = 0
+                        rename_columns = True
                 else:
                     # doing a column-wise concatenation so need series
                     # to have unique names
-                    name = current_column
-                    current_column += 1
+                    if name is None:
+                        rename_columns = True
+                        name = current_column
+                        current_column += 1
                 obj = sample._constructor(obj, copy=False)
-                if isinstance(obj, ABCDataFrame):
+                if isinstance(obj, ABCDataFrame) and rename_columns:
                     obj.columns = range(name, name + 1, 1)
             else:
                 obj = sample._constructor({name: obj}, copy=False)

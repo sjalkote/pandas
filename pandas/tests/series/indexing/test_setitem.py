@@ -4,6 +4,7 @@ from datetime import (
     datetime,
 )
 from decimal import Decimal
+import os
 
 import numpy as np
 import pytest
@@ -25,6 +26,7 @@ from pandas import (
     NaT,
     Period,
     Series,
+    StringDtype,
     Timedelta,
     Timestamp,
     array,
@@ -472,12 +474,14 @@ class TestSetitemCallable:
 
 
 class TestSetitemWithExpansion:
-    def test_setitem_empty_series(self):
-        # GH#10193, GH#51363 changed in 3.0 to not do inference in Index.insert
+    def test_setitem_empty_series(self, using_infer_string):
+        # GH#10193
         key = Timestamp("2012-01-01")
         series = Series(dtype=object)
         series[key] = 47
-        expected = Series(47, Index([key], dtype=object))
+        expected = Series(
+            47, index=[key] if using_infer_string else Index([key], dtype=object)
+        )
         tm.assert_series_equal(series, expected)
 
     def test_setitem_empty_series_datetimeindex_preserves_freq(self):
@@ -590,7 +594,7 @@ class TestSetitemWithExpansion:
         ser = Series(["a", "b"])
         ser[3] = nulls_fixture
         dtype = (
-            "string[pyarrow_numpy]"
+            "str"
             if using_infer_string and not isinstance(nulls_fixture, Decimal)
             else object
         )
@@ -845,28 +849,20 @@ class SetitemCastingEquivalents:
 
         self._check_inplace(is_inplace, orig, arr, obj)
 
-    def test_index_where(self, obj, key, expected, raises, val, using_infer_string):
+    def test_index_where(self, obj, key, expected, raises, val):
         mask = np.zeros(obj.shape, dtype=bool)
         mask[key] = True
 
-        if using_infer_string and obj.dtype == object:
-            with pytest.raises(TypeError, match="Scalar must"):
-                Index(obj).where(~mask, val)
-        else:
-            res = Index(obj).where(~mask, val)
-            expected_idx = Index(expected, dtype=expected.dtype)
-            tm.assert_index_equal(res, expected_idx)
+        res = Index(obj).where(~mask, val)
+        expected_idx = Index(expected, dtype=expected.dtype)
+        tm.assert_index_equal(res, expected_idx)
 
-    def test_index_putmask(self, obj, key, expected, raises, val, using_infer_string):
+    def test_index_putmask(self, obj, key, expected, raises, val):
         mask = np.zeros(obj.shape, dtype=bool)
         mask[key] = True
 
-        if using_infer_string and obj.dtype == object:
-            with pytest.raises(TypeError, match="Scalar must"):
-                Index(obj).putmask(mask, val)
-        else:
-            res = Index(obj).putmask(mask, val)
-            tm.assert_index_equal(res, Index(expected, dtype=expected.dtype))
+        res = Index(obj).putmask(mask, val)
+        tm.assert_index_equal(res, Index(expected, dtype=expected.dtype))
 
 
 @pytest.mark.parametrize(
@@ -1360,6 +1356,19 @@ class TestCoercionObject(CoercionTest):
 @pytest.mark.parametrize(
     "val,exp_dtype,raises",
     [
+        (1, object, True),
+        ("e", StringDtype(na_value=np.nan), False),
+    ],
+)
+class TestCoercionString(CoercionTest):
+    @pytest.fixture
+    def obj(self):
+        return Series(["a", "b", "c", "d"], dtype=StringDtype(na_value=np.nan))
+
+
+@pytest.mark.parametrize(
+    "val,exp_dtype,raises",
+    [
         (1, np.complex128, False),
         (1.1, np.complex128, False),
         (1 + 1j, np.complex128, False),
@@ -1434,7 +1443,10 @@ class TestCoercionFloat64(CoercionTest):
             marks=pytest.mark.xfail(
                 (
                     not np_version_gte1p24
-                    or (np_version_gte1p24 and np._get_promotion_state() != "weak")
+                    or (
+                        np_version_gte1p24
+                        and os.environ.get("NPY_PROMOTION_STATE", "weak") != "weak"
+                    )
                 ),
                 reason="np.float32(1.1) ends up as 1.100000023841858, so "
                 "np_can_hold_element raises and we cast to float64",

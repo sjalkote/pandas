@@ -8,6 +8,7 @@ from collections.abc import (
     Sequence,
 )
 import datetime
+from decimal import Decimal
 from functools import partial
 import os
 from textwrap import fill
@@ -43,6 +44,7 @@ from pandas.util._validators import check_dtype_backend
 
 from pandas.core.dtypes.common import (
     is_bool,
+    is_decimal,
     is_file_like,
     is_float,
     is_integer,
@@ -113,7 +115,7 @@ sheet_name : str, int, list, or None, default 0
     Strings are used for sheet names. Integers are used in zero-indexed
     sheet positions (chart sheets do not count as a sheet position).
     Lists of strings/integers are used to request multiple sheets.
-    Specify ``None`` to get all worksheets.
+    When ``None``, will return a dictionary containing DataFrames for each sheet.
 
     Available cases:
 
@@ -122,7 +124,7 @@ sheet_name : str, int, list, or None, default 0
     * ``"Sheet1"``: Load sheet with name "Sheet1"
     * ``[0, 1, "Sheet5"]``: Load first, second and sheet named "Sheet5"
       as a dict of `DataFrame`
-    * ``None``: All worksheets.
+    * ``None``: Returns a dictionary containing DataFrames for each sheet..
 
 header : int, list of int, default 0
     Row (0-indexed) to use for the column labels of the parsed
@@ -267,14 +269,15 @@ skipfooter : int, default 0
     Rows at the end to skip (0-indexed).
 {storage_options}
 
-dtype_backend : {{'numpy_nullable', 'pyarrow'}}, default 'numpy_nullable'
+dtype_backend : {{'numpy_nullable', 'pyarrow'}}
     Back-end data type applied to the resultant :class:`DataFrame`
-    (still experimental). Behaviour is as follows:
+    (still experimental). If not specified, the default behavior
+    is to not use nullable data types. If specified, the behavior
+    is as follows:
 
     * ``"numpy_nullable"``: returns nullable-dtype-backed :class:`DataFrame`
-      (default).
-    * ``"pyarrow"``: returns pyarrow-backed nullable :class:`ArrowDtype`
-      DataFrame.
+    * ``"pyarrow"``: returns pyarrow-backed nullable
+      :class:`ArrowDtype` :class:`DataFrame`
 
     .. versionadded:: 2.0
 
@@ -1347,6 +1350,8 @@ class ExcelWriter(Generic[_WorkbookT]):
             val = float(val)
         elif is_bool(val):
             val = bool(val)
+        elif is_decimal(val):
+            val = Decimal(val)
         elif isinstance(val, datetime.datetime):
             fmt = self._datetime_format
         elif isinstance(val, datetime.date):
@@ -1644,7 +1649,8 @@ class ExcelFile:
             Strings are used for sheet names. Integers are used in zero-indexed
             sheet positions (chart sheets do not count as a sheet position).
             Lists of strings/integers are used to request multiple sheets.
-            Specify ``None`` to get all worksheets.
+            When ``None``, will return a dictionary containing DataFrames for
+            each sheet.
         header : int, list of int, default 0
             Row (0-indexed) to use for the column labels of the parsed
             DataFrame. If a list of integers is passed those row positions will
@@ -1728,14 +1734,15 @@ class ExcelFile:
             comment string and the end of the current line is ignored.
         skipfooter : int, default 0
             Rows at the end to skip (0-indexed).
-        dtype_backend : {{'numpy_nullable', 'pyarrow'}}, default 'numpy_nullable'
+        dtype_backend : {{'numpy_nullable', 'pyarrow'}}
             Back-end data type applied to the resultant :class:`DataFrame`
-            (still experimental). Behaviour is as follows:
+            (still experimental). If not specified, the default behavior
+            is to not use nullable data types. If specified, the behavior
+            is as follows:
 
             * ``"numpy_nullable"``: returns nullable-dtype-backed :class:`DataFrame`
-              (default).
-            * ``"pyarrow"``: returns pyarrow-backed nullable :class:`ArrowDtype`
-              DataFrame.
+            * ``"pyarrow"``: returns pyarrow-backed nullable
+              :class:`ArrowDtype` :class:`DataFrame`
 
             .. versionadded:: 2.0
         **kwds : dict, optional

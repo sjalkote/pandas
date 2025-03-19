@@ -958,6 +958,19 @@ def test_resample_origin_with_day_freq_on_dst(unit):
     tm.assert_series_equal(result, expected)
 
 
+def test_resample_dst_midnight_last_nonexistent():
+    # GH 58380
+    ts = Series(
+        1,
+        date_range("2024-04-19", "2024-04-20", tz="Africa/Cairo", freq="15min"),
+    )
+
+    expected = Series([len(ts)], index=DatetimeIndex([ts.index[0]], freq="7D"))
+
+    result = ts.resample("7D").sum()
+    tm.assert_series_equal(result, expected)
+
+
 def test_resample_daily_anchored(unit):
     rng = date_range("1/1/2000 0:00:00", periods=10000, freq="min").as_unit(unit)
     ts = Series(np.random.default_rng(2).standard_normal(len(rng)), index=rng)
@@ -1009,12 +1022,8 @@ def test_resample_segfault(unit):
         all_wins_and_wagers, columns=("ID", "timestamp", "A", "B")
     ).set_index("timestamp")
     df.index = df.index.as_unit(unit)
-    msg = "DataFrameGroupBy.resample operated on the grouping columns"
-    with tm.assert_produces_warning(DeprecationWarning, match=msg):
-        result = df.groupby("ID").resample("5min").sum()
-    msg = "DataFrameGroupBy.apply operated on the grouping columns"
-    with tm.assert_produces_warning(DeprecationWarning, match=msg):
-        expected = df.groupby("ID").apply(lambda x: x.resample("5min").sum())
+    result = df.groupby("ID").resample("5min").sum()
+    expected = df.groupby("ID").apply(lambda x: x.resample("5min").sum())
     tm.assert_frame_equal(result, expected)
 
 
@@ -1033,9 +1042,7 @@ def test_resample_dtype_preservation(unit):
     result = df.resample("1D").ffill()
     assert result.val.dtype == np.int32
 
-    msg = "DataFrameGroupBy.resample operated on the grouping columns"
-    with tm.assert_produces_warning(DeprecationWarning, match=msg):
-        result = df.groupby("group").resample("1D").ffill()
+    result = df.groupby("group").resample("1D").ffill()
     assert result.val.dtype == np.int32
 
 
@@ -1808,12 +1815,8 @@ def test_resample_apply_with_additional_args2():
     multiplier = 10
 
     df = DataFrame({"A": 1, "B": 2}, index=date_range("2017", periods=10))
-    msg = "DataFrameGroupBy.resample operated on the grouping columns"
-    with tm.assert_produces_warning(DeprecationWarning, match=msg):
-        result = df.groupby("A").resample("D").agg(f, multiplier).astype(float)
-    msg = "DataFrameGroupBy.resample operated on the grouping columns"
-    with tm.assert_produces_warning(DeprecationWarning, match=msg):
-        expected = df.groupby("A").resample("D").mean().multiply(multiplier)
+    result = df.groupby("A").resample("D").agg(f, multiplier).astype(float)
+    expected = df.groupby("A").resample("D").mean().multiply(multiplier)
     tm.assert_frame_equal(result, expected)
 
 

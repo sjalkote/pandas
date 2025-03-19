@@ -73,7 +73,7 @@ def cut(
 
     Parameters
     ----------
-    x : array-like
+    x : 1d ndarray or Series
         The input array to be binned. Must be 1-dimensional.
     bins : int, sequence of scalars, or IntervalIndex
         The criteria to bin by.
@@ -126,7 +126,7 @@ def cut(
           Categorical for all other inputs. The values stored within
           are whatever the type in the sequence is.
 
-        * False : returns an ndarray of integers.
+        * False : returns a 1d ndarray or Series of integers.
 
     bins : numpy.ndarray or IntervalIndex.
         The computed or specified bins. Only returned when `retbins=True`.
@@ -358,7 +358,16 @@ def qcut(
     x_idx = _preprocess_for_cut(x)
     x_idx, _ = _coerce_to_type(x_idx)
 
-    quantiles = np.linspace(0, 1, q + 1) if is_integer(q) else q
+    if is_integer(q):
+        quantiles = np.linspace(0, 1, q + 1)
+        # Round up rather than to nearest if not representable in base 2
+        np.putmask(
+            quantiles,
+            q * quantiles != np.arange(q + 1),
+            np.nextafter(quantiles, 1),
+        )
+    else:
+        quantiles = q
 
     bins = x_idx.to_series().dropna().quantile(quantiles)
 

@@ -74,7 +74,7 @@ class TestNLargestNSmallest:
         )
         if "b" in order:
             error_msg = (
-                f"Column 'b' has dtype (object|string), "
+                f"Column 'b' has dtype (object|str), "
                 f"cannot use method '{nselect_method}' with this dtype"
             )
             with pytest.raises(TypeError, match=error_msg):
@@ -159,7 +159,7 @@ class TestNLargestNSmallest:
         result = df.nlargest(n, order)
         expected = df.sort_values(order, ascending=False).head(n)
         if Version(np.__version__) >= Version("1.25") and (
-            (order == ["a"] and n in (1, 2, 3, 4)) or (order == ["a", "b"]) and n == 5
+            (order == ["a"] and n in (1, 2, 3, 4)) or ((order == ["a", "b"]) and n == 5)
         ):
             request.applymarker(
                 pytest.mark.xfail(

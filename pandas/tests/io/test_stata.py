@@ -3,7 +3,9 @@ import datetime as dt
 from datetime import datetime
 import gzip
 import io
+import itertools
 import os
+import string
 import struct
 import tarfile
 import zipfile
@@ -434,7 +436,7 @@ class TestStata:
         )
 
     @pytest.mark.parametrize("version", [114, 117, 118, 119, None])
-    def test_read_write_dta10(self, version, temp_file):
+    def test_read_write_dta10(self, version, temp_file, using_infer_string):
         original = DataFrame(
             data=[["string", "object", 1, 1.1, np.datetime64("2003-12-25")]],
             columns=["string", "object", "integer", "floating", "datetime"],
@@ -448,9 +450,11 @@ class TestStata:
         original.to_stata(path, convert_dates={"datetime": "tc"}, version=version)
         written_and_read_again = self.read_dta(path)
 
-        expected = original[:]
+        expected = original.copy()
         # "tc" convert_dates means we store in ms
         expected["datetime"] = expected["datetime"].astype("M8[ms]")
+        if using_infer_string:
+            expected["object"] = expected["object"].astype("str")
 
         tm.assert_frame_equal(
             written_and_read_again.set_index("index"),
@@ -1161,28 +1165,13 @@ class TestStata:
 
     def test_categorical_warnings_and_errors(self, temp_file):
         # Warning for non-string labels
-        # Error for labels too long
-        original = DataFrame.from_records(
-            [["a" * 10000], ["b" * 10000], ["c" * 10000], ["d" * 10000]],
-            columns=["Too_long"],
-        )
-
-        original = original.astype("category")
-        path = temp_file
-        msg = (
-            "Stata value labels for a single variable must have "
-            r"a combined length less than 32,000 characters\."
-        )
-        with pytest.raises(ValueError, match=msg):
-            original.to_stata(path)
-
         original = DataFrame.from_records(
             [["a"], ["b"], ["c"], ["d"], [1]], columns=["Too_long"]
         ).astype("category")
 
         msg = "data file created has not lost information due to duplicate labels"
         with tm.assert_produces_warning(ValueLabelTypeMismatch, match=msg):
-            original.to_stata(path)
+            original.to_stata(temp_file)
             # should get a warning for mixed content
 
     @pytest.mark.parametrize("version", [114, 117, 118, 119, None])
@@ -1335,6 +1324,10 @@ class TestStata:
                 cat = ser._values.remove_unused_categories()
                 if cat.categories.dtype == object:
                     categories = pd.Index._with_infer(cat.categories._values)
+                    cat = cat.set_categories(categories)
+                elif cat.categories.dtype == "string" and len(cat.categories) == 0:
+                    # if the read categories are empty, it comes back as object dtype
+                    categories = cat.categories.astype(object)
                     cat = cat.set_categories(categories)
                 from_frame[col] = cat
         return from_frame
@@ -1672,8 +1665,8 @@ The repeated labels are:\n-+\nwolof
     def test_path_pathlib(self):
         df = DataFrame(
             1.1 * np.arange(120).reshape((30, 4)),
-            columns=pd.Index(list("ABCD"), dtype=object),
-            index=pd.Index([f"i-{i}" for i in range(30)], dtype=object),
+            columns=pd.Index(list("ABCD")),
+            index=pd.Index([f"i-{i}" for i in range(30)]),
         )
         df.index.name = "index"
         reader = lambda x: read_stata(x).set_index("index")
@@ -1697,8 +1690,8 @@ The repeated labels are:\n-+\nwolof
         # GH 17328
         df = DataFrame(
             1.1 * np.arange(120).reshape((30, 4)),
-            columns=pd.Index(list("ABCD"), dtype=object),
-            index=pd.Index([f"i-{i}" for i in range(30)], dtype=object),
+            columns=pd.Index(list("ABCD")),
+            index=pd.Index([f"i-{i}" for i in range(30)]),
         )
         df.index.name = "index"
         path = temp_file
@@ -1727,7 +1720,7 @@ The repeated labels are:\n-+\nwolof
         assert unformatted == formatted
 
     @pytest.mark.parametrize("byteorder", ["little", "big"])
-    def test_writer_117(self, byteorder, temp_file):
+    def test_writer_117(self, byteorder, temp_file, using_infer_string):
         original = DataFrame(
             data=[
                 [
@@ -1794,6 +1787,9 @@ The repeated labels are:\n-+\nwolof
         expected = original[:]
         # "tc" for convert_dates means we store with "ms" resolution
         expected["datetime"] = expected["datetime"].astype("M8[ms]")
+        if using_infer_string:
+            # object dtype (with only strings/None) comes back as string dtype
+            expected["object"] = expected["object"].astype("str")
 
         tm.assert_frame_equal(
             written_and_read_again.set_index("index"),
@@ -1843,8 +1839,8 @@ The repeated labels are:\n-+\nwolof
         bio = io.BytesIO()
         df = DataFrame(
             1.1 * np.arange(120).reshape((30, 4)),
-            columns=pd.Index(list("ABCD"), dtype=object),
-            index=pd.Index([f"i-{i}" for i in range(30)], dtype=object),
+            columns=pd.Index(list("ABCD")),
+            index=pd.Index([f"i-{i}" for i in range(30)]),
         )
         df.index.name = "index"
         path = temp_file
@@ -1859,8 +1855,8 @@ The repeated labels are:\n-+\nwolof
         # writing version 117 requires seek and cannot be used with gzip
         df = DataFrame(
             1.1 * np.arange(120).reshape((30, 4)),
-            columns=pd.Index(list("ABCD"), dtype=object),
-            index=pd.Index([f"i-{i}" for i in range(30)], dtype=object),
+            columns=pd.Index(list("ABCD")),
+            index=pd.Index([f"i-{i}" for i in range(30)]),
         )
         df.index.name = "index"
         path = temp_file
@@ -1897,7 +1893,7 @@ The repeated labels are:\n-+\nwolof
 
         tm.assert_frame_equal(unicode_df, expected)
 
-    def test_mixed_string_strl(self, temp_file):
+    def test_mixed_string_strl(self, temp_file, using_infer_string):
         # GH 23633
         output = [{"mixed": "string" * 500, "number": 0}, {"mixed": None, "number": 1}]
         output = DataFrame(output)
@@ -1914,6 +1910,8 @@ The repeated labels are:\n-+\nwolof
         output.to_stata(path, write_index=False, convert_strl=["mixed"], version=117)
         reread = read_stata(path)
         expected = output.fillna("")
+        if using_infer_string:
+            expected["mixed"] = expected["mixed"].astype("str")
         tm.assert_frame_equal(reread, expected)
 
     @pytest.mark.parametrize("version", [114, 117, 118, 119, None])
@@ -2341,7 +2339,7 @@ def test_iterator_value_labels(temp_file):
     values = ["c_label", "b_label"] + ["a_label"] * 500
     df = DataFrame({f"col{k}": pd.Categorical(values, ordered=True) for k in range(2)})
     df.to_stata(temp_file, write_index=False)
-    expected = pd.Index(["a_label", "b_label", "c_label"], dtype="object")
+    expected = pd.Index(["a_label", "b_label", "c_label"])
     with read_stata(temp_file, chunksize=100) as reader:
         for j, chunk in enumerate(reader):
             for i in range(2):
@@ -2580,3 +2578,12 @@ def test_empty_frame(temp_file):
     df3 = read_stata(path, columns=["a"])
     assert "b" not in df3
     tm.assert_series_equal(df3.dtypes, dtypes.loc[["a"]])
+
+
+@pytest.mark.parametrize("version", [114, 117, 118, 119, None])
+def test_many_strl(temp_file, version):
+    n = 65534
+    df = DataFrame(np.arange(n), columns=["col"])
+    lbls = ["".join(v) for v in itertools.product(*([string.ascii_letters] * 3))]
+    value_labels = {"col": {i: lbls[i] for i in range(n)}}
+    df.to_stata(temp_file, value_labels=value_labels, version=version)
